@@ -1,173 +1,24 @@
+# -*- coding: utf-8 -*-
+"""
+개선된 음성 텍스트 변환기 - 메인 애플리케이션
+"""
+
 import os
-import threading
 import sys
-import subprocess
+import threading
 import traceback
-import urllib.request
-import tempfile
 import pygame
 import time
 from pathlib import Path
-import zipfile
-import shutil
-import platform
 
 # PyQt5 imports
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                             QHBoxLayout, QLabel, QLineEdit, QPushButton, 
                             QComboBox, QProgressBar, QTextEdit, QFileDialog,
                             QMessageBox, QGroupBox, QFrame, QStatusBar,
-                            QGridLayout, QSplitter)
+                            QGridLayout, QSplitter, QCheckBox)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QTimer
 from PyQt5.QtGui import QFont, QIcon
-
-# FFmpeg 설치 함수
-def install_ffmpeg():
-    """FFmpeg를 자동으로 설치합니다."""
-    try:
-        if sys.platform == "win32":
-            # Windows용 FFmpeg 다운로드 및 설치
-            ffmpeg_url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-            temp_dir = tempfile.mkdtemp()
-            zip_path = os.path.join(temp_dir, "ffmpeg.zip")
-            
-            # 다운로드 진행 상태 표시
-            progress_dialog = QMessageBox()
-            progress_dialog.setWindowTitle("FFmpeg 설치")
-            progress_dialog.setText("FFmpeg 설치 준비 중...")
-            progress_dialog.setStandardButtons(QMessageBox.NoButton)
-            progress_dialog.show()
-            
-            def update_progress(block_num, block_size, total_size):
-                if total_size > 0:
-                    progress = min(100, int(block_num * block_size * 100 / total_size))
-                    progress_dialog.setText(f"FFmpeg 다운로드 중... {progress}%")
-                    QApplication.processEvents()
-            
-            # FFmpeg 다운로드
-            urllib.request.urlretrieve(ffmpeg_url, zip_path, update_progress)
-            
-            # 압축 해제
-            progress_dialog.setText("압축 해제 중...")
-            QApplication.processEvents()
-            
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                total_files = len(zip_ref.namelist())
-                for i, file in enumerate(zip_ref.namelist()):
-                    zip_ref.extract(file, temp_dir)
-                    progress = int((i + 1) * 100 / total_files)
-                    progress_dialog.setText(f"압축 해제 중... {progress}%")
-                    QApplication.processEvents()
-            
-            # FFmpeg 실행 파일을 시스템 경로에 복사
-            progress_dialog.setText("FFmpeg 설치 중...")
-            QApplication.processEvents()
-            
-            ffmpeg_dir = os.path.join(temp_dir, "ffmpeg-master-latest-win64-gpl", "bin")
-            system_path = os.environ.get('PATH', '')
-            new_path = os.path.join(os.path.expanduser("~"), "ffmpeg", "bin")
-            
-            # FFmpeg 폴더 생성
-            os.makedirs(new_path, exist_ok=True)
-            
-            # 실행 파일 복사
-            files = [f for f in os.listdir(ffmpeg_dir) if f.endswith('.exe')]
-            total_files = len(files)
-            for i, file in enumerate(files):
-                shutil.copy2(os.path.join(ffmpeg_dir, file), new_path)
-                progress = int((i + 1) * 100 / total_files)
-                progress_dialog.setText(f"설치 중... {progress}%")
-                QApplication.processEvents()
-            
-            # 환경 변수 PATH에 추가
-            if new_path not in system_path:
-                os.environ['PATH'] = f"{new_path};{system_path}"
-            
-            # 임시 파일 정리
-            progress_dialog.setText("임시 파일 정리 중...")
-            QApplication.processEvents()
-            
-            shutil.rmtree(temp_dir)
-            
-            progress_dialog.setText("설치 완료!")
-            QApplication.processEvents()
-            
-            time.sleep(1)  # 완료 메시지를 잠시 보여줌
-            progress_dialog.close()
-            QMessageBox.information(None, "설치 완료", "FFmpeg가 성공적으로 설치되었습니다.")
-            return True
-            
-        elif sys.platform == "darwin":
-            # macOS용 FFmpeg 설치 (Homebrew 사용)
-            progress_dialog = QMessageBox()
-            progress_dialog.setWindowTitle("FFmpeg 설치")
-            progress_dialog.setText("FFmpeg 설치 중...")
-            progress_dialog.setStandardButtons(QMessageBox.NoButton)
-            progress_dialog.show()
-            
-            try:
-                subprocess.run(['brew', 'install', 'ffmpeg'], check=True)
-                progress_dialog.close()
-                QMessageBox.information(None, "설치 완료", "FFmpeg가 성공적으로 설치되었습니다.")
-                return True
-            except subprocess.CalledProcessError:
-                progress_dialog.close()
-                QMessageBox.critical(None, "설치 실패", "Homebrew를 통해 FFmpeg 설치에 실패했습니다.")
-                return False
-        else:
-            QMessageBox.critical(None, "지원되지 않는 시스템", "현재 시스템에서는 자동 설치를 지원하지 않습니다.")
-            return False
-            
-    except Exception as e:
-        QMessageBox.critical(None, "설치 오류", f"FFmpeg 설치 중 오류가 발생했습니다: {e}")
-        return False
-
-# FFmpeg 확인 및 설치
-def check_and_install_ffmpeg():
-    """FFmpeg가 설치되어 있는지 확인하고, 없으면 설치를 시도합니다."""
-    # 가능한 FFmpeg 경로 목록 (macOS)
-    possible_ffmpeg_paths = [
-        'ffmpeg',  # 기본 PATH
-        '/usr/local/bin/ffmpeg',  # Homebrew 기본 설치 경로
-        '/opt/homebrew/bin/ffmpeg',  # Apple Silicon Homebrew 경로
-        '/usr/bin/ffmpeg',  # 시스템 경로
-        os.path.expanduser('~/bin/ffmpeg'),  # 사용자 bin 디렉토리
-    ]
-    
-    # Windows에서 추가 검색 경로
-    if sys.platform == "win32":
-        possible_ffmpeg_paths.extend([
-            os.path.join(os.environ.get('ProgramFiles', 'C:\\Program Files'), 'FFmpeg', 'bin', 'ffmpeg.exe'),
-            os.path.join(os.environ.get('ProgramFiles(x86)', 'C:\\Program Files (x86)'), 'FFmpeg', 'bin', 'ffmpeg.exe'),
-            os.path.join(os.path.expanduser('~'), 'ffmpeg', 'bin', 'ffmpeg.exe'),
-        ])
-    
-    # 각 경로 시도
-    for ffmpeg_path in possible_ffmpeg_paths:
-        try:
-            subprocess.run([ffmpeg_path, '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-            print(f"FFmpeg found at: {ffmpeg_path}")
-            # 찾은 경로를 환경 변수에 추가
-            ffmpeg_dir = os.path.dirname(ffmpeg_path)
-            if ffmpeg_dir and ffmpeg_dir not in os.environ.get('PATH', ''):
-                os.environ['PATH'] = f"{ffmpeg_dir}{os.pathsep}{os.environ.get('PATH', '')}"
-            return True
-        except (subprocess.SubprocessError, FileNotFoundError):
-            continue
-    
-    # 모든 경로에서 찾지 못한 경우
-    response = QMessageBox.question(None, "FFmpeg 설치 필요", 
-                                   "FFmpeg가 설치되어 있지 않습니다. 자동으로 설치하시겠습니까?\n"
-                                   "설치하지 않으려면 '아니오'를 선택하세요.",
-                                   QMessageBox.Yes | QMessageBox.No)
-    if response == QMessageBox.Yes:
-        return install_ffmpeg()
-    else:
-        QMessageBox.warning(None, "FFmpeg 필요", 
-                           "FFmpeg가 필요합니다. 수동으로 설치하세요:\n"
-                           "macOS: brew install ffmpeg\n"
-                           "Windows: https://ffmpeg.org/download.html에서 다운로드")
-        return False
 
 # 필요한 패키지 확인
 required_packages = {
@@ -189,6 +40,19 @@ if missing_packages:
                         f"다음 명령어를 실행하세요: pip install {' '.join(missing_packages)}")
     sys.exit(1)
 
+# 설정 및 유틸리티 임포트
+try:
+    from config import LANGUAGES, UI_CONFIG, SAVE_CONFIG, AUDIO_CONFIG, SUPPORTED_AUDIO_FORMATS, SUPPORTED_VIDEO_FORMATS
+    from utils import (get_documents_dir, find_ffmpeg_path, find_ffprobe_path, 
+                      check_internet_connection, get_file_size_mb, create_temp_directory, 
+                      cleanup_temp_files, format_duration, validate_audio_file)
+    from ffmpeg_installer import check_and_install_ffmpeg
+except ImportError as e:
+    QMessageBox.critical(None, "모듈 임포트 오류", 
+                        f"필요한 모듈을 찾을 수 없습니다: {e}\n"
+                        "config.py, utils.py, ffmpeg_installer.py 파일이 있는지 확인하세요.")
+    sys.exit(1)
+
 # FFmpeg 확인 및 설치
 if not check_and_install_ffmpeg():
     sys.exit(1)
@@ -197,95 +61,43 @@ if not check_and_install_ffmpeg():
 import speech_recognition as sr
 from pydub import AudioSegment
 
-# 문서 폴더 경로 가져오기
-def get_documents_dir():
-    """사용자의 문서 폴더 경로를 가져옵니다."""
-    try:
-        if sys.platform == "win32":
-            try:
-                import winreg
-                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, 
-                                  r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders") as key:
-                    return winreg.QueryValueEx(key, "Personal")[0]
-            except ImportError:
-                return os.path.join(os.path.expanduser("~"), "Documents")
-            except Exception as e:
-                print(f"[ERROR] 문서 폴더 경로 가져오기 실패 (Windows): {e}")
-                return os.path.join(os.path.expanduser("~"), "Documents")
-        elif sys.platform == "darwin":
-            return os.path.join(os.path.expanduser("~"), "Documents")
-        else:
-            return os.path.join(os.path.expanduser("~"), "Documents")
-    except Exception as e:
-        print(f"[ERROR] 문서 폴더 경로 가져오기 실패: {e}")
-        return os.path.join(os.path.expanduser("~"), "Documents")
-
-# 스레드 안전을 위한 시그널 프록시
-class SignalProxy(QObject):
-    status_updated = pyqtSignal(str)
-    progress_updated = pyqtSignal(int)
-    text_updated = pyqtSignal(str)
-    recognition_finished = pyqtSignal(str)
-    error_occurred = pyqtSignal(str)
-
 class RecognitionThread(QThread):
+    """음성 인식 스레드"""
     finished = pyqtSignal(str)
     progress = pyqtSignal(int)
     status = pyqtSignal(str)
     error = pyqtSignal(str)
     
-    def __init__(self, audio_file, language, temp_dir):
+    def __init__(self, audio_file, language, temp_dir, chunk_length_ms=60000):
         super().__init__()
         self.audio_file = audio_file
         self.language = language
         self.temp_dir = temp_dir
+        self.chunk_length_ms = chunk_length_ms
         self.is_running = True
     
     def run(self):
         try:
+            # 인터넷 연결 확인
+            if not check_internet_connection():
+                self.error.emit("인터넷 연결이 확인되지 않습니다. Google 음성 인식은 인터넷이 필요합니다.")
+                return
+            
             # 오디오 로드
             self.status.emit("오디오 파일 로드 중...")
             self.progress.emit(10)
             
-            file_ext = os.path.splitext(self.audio_file)[1].lower()
-            
-            # FFmpeg 경로 확인
-            ffmpeg_path = 'ffmpeg'
-            possible_ffmpeg_paths = [
-                'ffmpeg', '/usr/local/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg',
-                '/usr/bin/ffmpeg', os.path.expanduser('~/bin/ffmpeg')
-            ]
-            
-            if sys.platform == "win32":
-                possible_ffmpeg_paths.extend([
-                    os.path.join(os.environ.get('ProgramFiles', 'C:\\Program Files'), 'FFmpeg', 'bin', 'ffmpeg.exe'),
-                    os.path.join(os.environ.get('ProgramFiles(x86)', 'C:\\Program Files (x86)'), 'FFmpeg', 'bin', 'ffmpeg.exe'),
-                    os.path.join(os.path.expanduser('~'), 'ffmpeg', 'bin', 'ffmpeg.exe'),
-                ])
-            
-            for path in possible_ffmpeg_paths:
-                try:
-                    subprocess.run([path, '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-                    ffmpeg_path = path
-                    break
-                except (subprocess.SubprocessError, FileNotFoundError):
-                    continue
+            # FFmpeg 경로 설정
+            ffmpeg_path = find_ffmpeg_path()
+            if not ffmpeg_path:
+                self.error.emit("FFmpeg를 찾을 수 없습니다.")
+                return
             
             os.environ['FFMPEG_BINARY'] = ffmpeg_path
             
             # 오디오 로드
-            if file_ext == ".mp3":
-                audio_segment = AudioSegment.from_mp3(self.audio_file)
-            elif file_ext == ".wav":
-                audio_segment = AudioSegment.from_wav(self.audio_file)
-            elif file_ext in [".m4a", ".aac"]:
-                audio_segment = AudioSegment.from_file(self.audio_file, format="m4a")
-            elif file_ext == ".flac":
-                audio_segment = AudioSegment.from_file(self.audio_file, format="flac")
-            elif file_ext == ".ogg":
-                audio_segment = AudioSegment.from_file(self.audio_file, format="ogg")
-            else:
-                audio_segment = AudioSegment.from_file(self.audio_file)
+            file_ext = os.path.splitext(self.audio_file)[1].lower()
+            audio_segment = self._load_audio_file(file_ext)
             
             self.progress.emit(20)
             
@@ -296,18 +108,10 @@ class RecognitionThread(QThread):
             self.progress.emit(30)
             
             # 음성 인식
-            lang_code = "ko-KR" if self.language == "한국어" else "en-US" if self.language == "영어" else None
+            lang_code = LANGUAGES.get(self.language)
             
-            chunk_length_ms = 60000  # 60초 청크
-            chunks = self.split_audio_to_chunks(audio_segment, chunk_length_ms)
-            
+            chunks = self.split_audio_to_chunks(audio_segment, self.chunk_length_ms)
             recognizer = sr.Recognizer()
-            
-            try:
-                urllib.request.urlopen('http://google.com', timeout=1)
-            except:
-                self.error.emit("인터넷 연결이 확인되지 않습니다. Google 음성 인식은 인터넷이 필요합니다.")
-                return
             
             full_text = ""
             for i, chunk in enumerate(chunks):
@@ -344,7 +148,23 @@ class RecognitionThread(QThread):
         except Exception as e:
             self.error.emit(f"음성 인식 중 오류 발생: {e}")
     
+    def _load_audio_file(self, file_ext):
+        """오디오 파일을 로드합니다."""
+        if file_ext == ".mp3":
+            return AudioSegment.from_mp3(self.audio_file)
+        elif file_ext == ".wav":
+            return AudioSegment.from_wav(self.audio_file)
+        elif file_ext in [".m4a", ".aac"]:
+            return AudioSegment.from_file(self.audio_file, format="m4a")
+        elif file_ext == ".flac":
+            return AudioSegment.from_file(self.audio_file, format="flac")
+        elif file_ext == ".ogg":
+            return AudioSegment.from_file(self.audio_file, format="ogg")
+        else:
+            return AudioSegment.from_file(self.audio_file)
+    
     def split_audio_to_chunks(self, audio_segment, chunk_length_ms):
+        """오디오를 청크로 분할합니다."""
         chunks = []
         total_length = len(audio_segment)
         
@@ -355,9 +175,12 @@ class RecognitionThread(QThread):
         return chunks
     
     def stop(self):
+        """스레드를 중지합니다."""
         self.is_running = False
 
 class AudioTranscriber(QMainWindow):
+    """음성 텍스트 변환기 메인 윈도우"""
+    
     def __init__(self):
         super().__init__()
         self.audio_file = None
@@ -367,12 +190,12 @@ class AudioTranscriber(QMainWindow):
         self.recognition_thread = None
         
         # 임시 디렉토리 생성
-        try:
-            self.temp_dir = tempfile.mkdtemp()
-            self.temp_wav = os.path.join(self.temp_dir, "temp_audio.wav")
-        except Exception as e:
-            QMessageBox.critical(self, "오류", f"임시 디렉토리 생성 실패: {e}")
+        self.temp_dir = create_temp_directory()
+        if not self.temp_dir:
+            QMessageBox.critical(self, "오류", "임시 디렉토리 생성에 실패했습니다.")
             sys.exit(1)
+        
+        self.temp_wav = os.path.join(self.temp_dir, "temp_audio.wav")
         
         # Pygame 초기화
         try:
@@ -384,8 +207,9 @@ class AudioTranscriber(QMainWindow):
         self.init_ui()
     
     def init_ui(self):
-        self.setWindowTitle("음성 텍스트 변환기")
-        self.setGeometry(100, 100, 900, 700)
+        """UI를 초기화합니다."""
+        self.setWindowTitle("음성 텍스트 변환기 (개선된 버전)")
+        self.setGeometry(100, 100, *UI_CONFIG["window_size"])
         
         # 중앙 위젯
         central_widget = QWidget()
@@ -409,14 +233,23 @@ class AudioTranscriber(QMainWindow):
         file_layout.addWidget(browse_button)
         control_layout.addLayout(file_layout)
         
+        # 파일 정보 표시
+        self.file_info_label = QLabel("파일 정보: 선택된 파일이 없습니다")
+        self.file_info_label.setStyleSheet("color: gray; font-size: 10px;")
+        control_layout.addWidget(self.file_info_label)
+        
         # 오디오 제어
         audio_layout = QHBoxLayout()
         self.play_button = QPushButton("재생")
         self.play_button.clicked.connect(self.toggle_play)
         self.play_button.setEnabled(False)
         
+        self.auto_save_checkbox = QCheckBox("자동 저장")
+        self.auto_save_checkbox.setChecked(True)
+        
         audio_layout.addWidget(self.play_button)
         audio_layout.addStretch()
+        audio_layout.addWidget(self.auto_save_checkbox)
         control_layout.addLayout(audio_layout)
         
         main_layout.addWidget(control_group)
@@ -430,7 +263,7 @@ class AudioTranscriber(QMainWindow):
         language_layout.addWidget(QLabel("언어:"))
         
         self.language_combo = QComboBox()
-        self.language_combo.addItems(["한국어", "영어", "자동 감지"])
+        self.language_combo.addItems(list(LANGUAGES.keys()))
         language_layout.addWidget(self.language_combo)
         language_layout.addStretch()
         recognition_layout.addLayout(language_layout)
@@ -454,7 +287,7 @@ class AudioTranscriber(QMainWindow):
         result_layout = QVBoxLayout(result_group)
         
         self.text_result = QTextEdit()
-        self.text_result.setFont(QFont("Consolas", 10))
+        self.text_result.setFont(QFont(UI_CONFIG["font_family"], UI_CONFIG["font_size"]))
         result_layout.addWidget(self.text_result)
         
         # 하단 버튼들
@@ -478,24 +311,38 @@ class AudioTranscriber(QMainWindow):
         self.status_bar.showMessage("준비됨")
     
     def browse_file(self):
-        filetypes = "미디어 파일 (*.mp3 *.wav *.m4a *.aac *.flac *.ogg *.mp4 *.avi *.mkv *.mov *.wmv);;오디오 파일 (*.mp3 *.wav *.m4a *.aac *.flac *.ogg);;비디오 파일 (*.mp4 *.avi *.mkv *.mov *.wmv);;모든 파일 (*.*)"
+        """파일을 선택합니다."""
+        filetypes = (f"미디어 파일 (*{' *'.join(AUDIO_CONFIG['supported_formats'])});;"
+                    f"오디오 파일 (*{' *'.join(SUPPORTED_AUDIO_FORMATS)});;"
+                    f"비디오 파일 (*{' *'.join(SUPPORTED_VIDEO_FORMATS)});;"
+                    "모든 파일 (*.*)")
         
         filepath, _ = QFileDialog.getOpenFileName(
             self, "미디어 파일 선택", "", filetypes
         )
         
         if filepath:
+            # 파일 유효성 검사
+            is_valid, message = validate_audio_file(filepath)
+            if not is_valid:
+                QMessageBox.warning(self, "파일 오류", message)
+                return
+            
             self.audio_file = filepath
             self.file_edit.setText(filepath)
             
+            # 파일 정보 표시
+            file_size_mb = get_file_size_mb(filepath)
+            filename = os.path.basename(filepath)
+            self.file_info_label.setText(f"파일: {filename} | 크기: {file_size_mb:.1f}MB")
+            
             # 비디오 파일인 경우 오디오 추출
             file_ext = os.path.splitext(filepath)[1].lower()
-            if file_ext in ['.mp4', '.avi', '.mkv', '.mov', '.wmv']:
+            if file_ext in SUPPORTED_VIDEO_FORMATS:
                 self.extract_audio_from_video(filepath)
             else:
                 self.load_audio()
             
-            filename = os.path.basename(filepath)
             self.status_bar.showMessage(f"파일 로드됨: {filename}")
     
     def extract_audio_from_video(self, video_path):
@@ -508,26 +355,10 @@ class AudioTranscriber(QMainWindow):
             temp_audio = os.path.join(self.temp_dir, "extracted_audio.wav")
             
             # FFmpeg 경로 확인
-            ffmpeg_path = 'ffmpeg'
-            possible_ffmpeg_paths = [
-                'ffmpeg', '/usr/local/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg',
-                '/usr/bin/ffmpeg', os.path.expanduser('~/bin/ffmpeg')
-            ]
-            
-            if sys.platform == "win32":
-                possible_ffmpeg_paths.extend([
-                    os.path.join(os.environ.get('ProgramFiles', 'C:\\Program Files'), 'FFmpeg', 'bin', 'ffmpeg.exe'),
-                    os.path.join(os.environ.get('ProgramFiles(x86)', 'C:\\Program Files (x86)'), 'FFmpeg', 'bin', 'ffmpeg.exe'),
-                    os.path.join(os.path.expanduser('~'), 'ffmpeg', 'bin', 'ffmpeg.exe'),
-                ])
-            
-            for path in possible_ffmpeg_paths:
-                try:
-                    subprocess.run([path, '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-                    ffmpeg_path = path
-                    break
-                except (subprocess.SubprocessError, FileNotFoundError):
-                    continue
+            ffmpeg_path = find_ffmpeg_path()
+            if not ffmpeg_path:
+                QMessageBox.critical(self, "FFmpeg 오류", "FFmpeg를 찾을 수 없습니다.")
+                return
             
             # FFmpeg를 사용하여 오디오 추출
             command = [
@@ -570,6 +401,7 @@ class AudioTranscriber(QMainWindow):
             self.status_bar.showMessage("오류: 오디오 추출 실패")
     
     def load_audio(self):
+        """오디오 파일을 로드합니다."""
         try:
             pygame.mixer.music.stop()
             self.is_playing = False
@@ -579,77 +411,21 @@ class AudioTranscriber(QMainWindow):
             self.status_bar.showMessage(f"오디오 파일 로드 중...")
             QApplication.processEvents()
             
-            # FFmpeg 경로 확인
-            ffmpeg_path = 'ffmpeg'
-            ffprobe_path = 'ffprobe'
+            # FFmpeg 경로 설정
+            ffmpeg_path = find_ffmpeg_path()
+            ffprobe_path = find_ffprobe_path()
             
-            possible_ffmpeg_paths = [
-                'ffmpeg', '/usr/local/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg',
-                '/usr/bin/ffmpeg', os.path.expanduser('~/bin/ffmpeg')
-            ]
-            
-            possible_ffprobe_paths = [
-                'ffprobe', '/usr/local/bin/ffprobe', '/opt/homebrew/bin/ffprobe',
-                '/usr/bin/ffprobe', os.path.expanduser('~/bin/ffprobe')
-            ]
-            
-            if sys.platform == "win32":
-                possible_ffmpeg_paths.extend([
-                    os.path.join(os.environ.get('ProgramFiles', 'C:\\Program Files'), 'FFmpeg', 'bin', 'ffmpeg.exe'),
-                    os.path.join(os.environ.get('ProgramFiles(x86)', 'C:\\Program Files (x86)'), 'FFmpeg', 'bin', 'ffmpeg.exe'),
-                    os.path.join(os.path.expanduser('~'), 'ffmpeg', 'bin', 'ffmpeg.exe'),
-                ])
-                
-                possible_ffprobe_paths.extend([
-                    os.path.join(os.environ.get('ProgramFiles', 'C:\\Program Files'), 'FFmpeg', 'bin', 'ffprobe.exe'),
-                    os.path.join(os.environ.get('ProgramFiles(x86)', 'C:\\Program Files (x86)'), 'FFmpeg', 'bin', 'ffprobe.exe'),
-                    os.path.join(os.path.expanduser('~'), 'ffmpeg', 'bin', 'ffprobe.exe'),
-                ])
-            
-            for path in possible_ffmpeg_paths:
-                try:
-                    subprocess.run([path, '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-                    ffmpeg_path = path
-                    break
-                except (subprocess.SubprocessError, FileNotFoundError):
-                    continue
-                    
-            for path in possible_ffprobe_paths:
-                try:
-                    subprocess.run([path, '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-                    ffprobe_path = path
-                    break
-                except (subprocess.SubprocessError, FileNotFoundError):
-                    continue
+            if not ffmpeg_path:
+                QMessageBox.critical(self, "FFmpeg 오류", "FFmpeg를 찾을 수 없습니다.")
+                return
             
             # pydub에 FFmpeg 경로 설정
             os.environ['FFMPEG_BINARY'] = ffmpeg_path
-            os.environ['FFPROBE_BINARY'] = ffprobe_path
+            if ffprobe_path:
+                os.environ['FFPROBE_BINARY'] = ffprobe_path
             
-            try:
-                if file_ext == ".mp3":
-                    self.audio_segment = AudioSegment.from_mp3(self.audio_file)
-                elif file_ext == ".wav":
-                    self.audio_segment = AudioSegment.from_wav(self.audio_file)
-                elif file_ext in [".m4a", ".aac"]:
-                    self.audio_segment = AudioSegment.from_file(self.audio_file, format="m4a")
-                elif file_ext == ".flac":
-                    self.audio_segment = AudioSegment.from_file(self.audio_file, format="flac")
-                elif file_ext == ".ogg":
-                    self.audio_segment = AudioSegment.from_file(self.audio_file, format="ogg")
-                else:
-                    self.audio_segment = AudioSegment.from_file(self.audio_file)
-            except Exception as e:
-                if "ffmpeg" in str(e).lower():
-                    QMessageBox.critical(self, "FFmpeg 오류", 
-                                       f"FFmpeg 관련 오류: {e}\n\n"
-                                       f"사용한 FFmpeg 경로: {ffmpeg_path}\n"
-                                       f"사용한 FFprobe 경로: {ffprobe_path}\n\n"
-                                       "경로가 올바른지 확인하세요.")
-                    self.status_bar.showMessage("오류: FFmpeg가 필요합니다")
-                    return
-                else:
-                    raise e
+            # 오디오 로드
+            self.audio_segment = self._load_audio_segment(file_ext)
             
             try:
                 # 임시 파일이 이미 존재하면 삭제
@@ -674,7 +450,23 @@ class AudioTranscriber(QMainWindow):
             QMessageBox.critical(self, "오류", f"오디오 파일 로드 실패: {e}")
             self.status_bar.showMessage("오류: 오디오 파일을 로드할 수 없습니다.")
     
+    def _load_audio_segment(self, file_ext):
+        """오디오 세그먼트를 로드합니다."""
+        if file_ext == ".mp3":
+            return AudioSegment.from_mp3(self.audio_file)
+        elif file_ext == ".wav":
+            return AudioSegment.from_wav(self.audio_file)
+        elif file_ext in [".m4a", ".aac"]:
+            return AudioSegment.from_file(self.audio_file, format="m4a")
+        elif file_ext == ".flac":
+            return AudioSegment.from_file(self.audio_file, format="flac")
+        elif file_ext == ".ogg":
+            return AudioSegment.from_file(self.audio_file, format="ogg")
+        else:
+            return AudioSegment.from_file(self.audio_file)
+    
     def toggle_play(self):
+        """오디오 재생을 토글합니다."""
         if not self.audio_file:
             QMessageBox.information(self, "알림", "먼저 오디오 파일을 선택하세요.")
             return
@@ -700,6 +492,7 @@ class AudioTranscriber(QMainWindow):
             self.status_bar.showMessage(f"오류: {e}")
     
     def start_recognition(self):
+        """음성 인식을 시작합니다."""
         if not self.audio_file:
             QMessageBox.information(self, "알림", "먼저 오디오 파일을 선택하세요.")
             return
@@ -724,6 +517,7 @@ class AudioTranscriber(QMainWindow):
         self.status_bar.showMessage("음성 인식 진행 중...")
     
     def on_recognition_finished(self, text):
+        """음성 인식이 완료되었을 때 호출됩니다."""
         self.recognize_button.setEnabled(True)
         self.progress_bar.setVisible(False)
         self.status_bar.showMessage("음성 인식 완료")
@@ -737,12 +531,14 @@ class AudioTranscriber(QMainWindow):
                                   f"음성 인식이 완료되었습니다!\n\n인식된 텍스트 길이: {text_length}자")
             
             # 자동 저장
-            self.save_text_to_file(text, auto_save=True)
+            if self.auto_save_checkbox.isChecked():
+                self.save_text_to_file(text, auto_save=True)
         else:
             self.text_result.setPlainText("인식된 텍스트가 없습니다.")
             QMessageBox.warning(self, "알림", "음성 인식 결과가 없습니다.")
     
     def on_recognition_error(self, error_msg):
+        """음성 인식 중 오류가 발생했을 때 호출됩니다."""
         self.recognize_button.setEnabled(True)
         self.progress_bar.setVisible(False)
         self.status_bar.showMessage(f"오류: {error_msg}")
@@ -750,6 +546,7 @@ class AudioTranscriber(QMainWindow):
         self.text_result.setPlainText(f"오류 발생: {error_msg}")
     
     def save_text_to_file(self, text, filepath=None, auto_save=False):
+        """텍스트를 파일로 저장합니다."""
         if not text:
             if not auto_save:
                 QMessageBox.information(self, "알림", "저장할 텍스트가 없습니다.")
@@ -758,7 +555,7 @@ class AudioTranscriber(QMainWindow):
         if filepath is None:
             if auto_save:
                 docs_dir = get_documents_dir()
-                speech_to_text_dir = os.path.join(docs_dir, "speech_to_text")
+                speech_to_text_dir = os.path.join(docs_dir, SAVE_CONFIG["auto_save_dir"])
                 os.makedirs(speech_to_text_dir, exist_ok=True)
                 base_name = os.path.splitext(os.path.basename(self.audio_file))[0]
                 filepath = os.path.join(speech_to_text_dir, f"{base_name}.txt")
@@ -777,11 +574,12 @@ class AudioTranscriber(QMainWindow):
             return False
         
         try:
+            # 인코딩 시도
             try:
-                with open(filepath, 'w', encoding='utf-8') as file:
+                with open(filepath, 'w', encoding=SAVE_CONFIG["default_encoding"]) as file:
                     file.write(text)
             except UnicodeEncodeError:
-                with open(filepath, 'w', encoding='cp949') as file:
+                with open(filepath, 'w', encoding=SAVE_CONFIG["fallback_encoding"]) as file:
                     file.write(text)
             
             self.status_bar.showMessage(f"텍스트가 저장되었습니다: {os.path.basename(filepath)}")
@@ -797,24 +595,28 @@ class AudioTranscriber(QMainWindow):
             return False
     
     def save_text(self):
+        """텍스트를 저장합니다."""
         text = self.text_result.toPlainText().strip()
         self.save_text_to_file(text)
     
     def clear_result(self):
+        """결과를 지웁니다."""
         self.text_result.clear()
         self.status_bar.showMessage("결과가 지워졌습니다.")
     
     def closeEvent(self, event):
+        """애플리케이션 종료 시 호출됩니다."""
         try:
             pygame.mixer.music.stop()
-            shutil.rmtree(self.temp_dir, ignore_errors=True)
+            cleanup_temp_files(self.temp_dir)
         except:
             pass
         event.accept()
 
 def main():
+    """메인 함수"""
     app = QApplication(sys.argv)
-    app.setApplicationName("음성 텍스트 변환기")
+    app.setApplicationName("음성 텍스트 변환기 (개선된 버전)")
     
     # Windows에서 콘솔 창 숨기기
     if sys.platform == "win32":
@@ -827,4 +629,4 @@ def main():
     sys.exit(app.exec_())
 
 if __name__ == "__main__":
-    main()
+    main() 
