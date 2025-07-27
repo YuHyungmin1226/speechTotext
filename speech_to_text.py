@@ -9,6 +9,7 @@ import threading
 import traceback
 import pygame
 import time
+import subprocess
 from pathlib import Path
 
 # PyQt5 imports
