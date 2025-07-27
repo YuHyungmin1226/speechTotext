@@ -58,7 +58,9 @@ def find_ffmpeg_path():
     for ffmpeg_path in possible_ffmpeg_paths:
         try:
             subprocess.run([ffmpeg_path, '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-            print(f"FFmpeg found at: {ffmpeg_path}")
+            # exe 파일이 아닌 경우에만 출력
+            if not getattr(sys, 'frozen', False):
+                print(f"FFmpeg found at: {ffmpeg_path}")
             # 찾은 경로를 환경 변수에 추가
             ffmpeg_dir = os.path.dirname(ffmpeg_path)
             if ffmpeg_dir and ffmpeg_dir not in os.environ.get('PATH', ''):
@@ -91,7 +93,9 @@ def find_ffprobe_path():
     for ffprobe_path in possible_ffprobe_paths:
         try:
             subprocess.run([ffprobe_path, '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-            print(f"FFprobe found at: {ffprobe_path}")
+            # exe 파일이 아닌 경우에만 출력
+            if not getattr(sys, 'frozen', False):
+                print(f"FFprobe found at: {ffprobe_path}")
             return ffprobe_path
         except (subprocess.SubprocessError, FileNotFoundError):
             continue
@@ -132,15 +136,20 @@ def create_temp_directory():
         temp_dir = os.path.join(temp_base, f"session_{int(time.time())}")
         os.makedirs(temp_dir, exist_ok=True)
         
-        print(f"[INFO] 임시 디렉토리 생성: {temp_dir}")
+        # exe 파일이 아닌 경우에만 출력
+        if not getattr(sys, 'frozen', False):
+            print(f"[INFO] 임시 디렉토리 생성: {temp_dir}")
         return temp_dir
     except Exception as e:
-        print(f"[ERROR] 임시 디렉토리 생성 실패: {e}")
+        # exe 파일이 아닌 경우에만 출력
+        if not getattr(sys, 'frozen', False):
+            print(f"[ERROR] 임시 디렉토리 생성 실패: {e}")
         # 대안: 시스템 임시 디렉토리 사용
         try:
             return tempfile.mkdtemp(prefix="speech_to_text_")
         except Exception as e2:
-            print(f"[ERROR] 시스템 임시 디렉토리 생성도 실패: {e2}")
+            if not getattr(sys, 'frozen', False):
+                print(f"[ERROR] 시스템 임시 디렉토리 생성도 실패: {e2}")
             return None
 
 def cleanup_temp_files(temp_dir):
@@ -154,24 +163,34 @@ def cleanup_temp_files(temp_dir):
                         file_path = os.path.join(root, file)
                         os.remove(file_path)
                     except Exception as e:
-                        print(f"[WARNING] 파일 삭제 실패 {file}: {e}")
+                        # exe 파일이 아닌 경우에만 출력
+                        if not getattr(sys, 'frozen', False):
+                            print(f"[WARNING] 파일 삭제 실패 {file}: {e}")
                 
                 for dir in dirs:
                     try:
                         dir_path = os.path.join(root, dir)
                         os.rmdir(dir_path)
                     except Exception as e:
-                        print(f"[WARNING] 디렉토리 삭제 실패 {dir}: {e}")
+                        # exe 파일이 아닌 경우에만 출력
+                        if not getattr(sys, 'frozen', False):
+                            print(f"[WARNING] 디렉토리 삭제 실패 {dir}: {e}")
             
             # 최종적으로 디렉토리 삭제
             try:
                 os.rmdir(temp_dir)
-                print(f"[INFO] 임시 디렉토리 정리 완료: {temp_dir}")
+                # exe 파일이 아닌 경우에만 출력
+                if not getattr(sys, 'frozen', False):
+                    print(f"[INFO] 임시 디렉토리 정리 완료: {temp_dir}")
             except Exception as e:
-                print(f"[WARNING] 임시 디렉토리 삭제 실패: {e}")
+                # exe 파일이 아닌 경우에만 출력
+                if not getattr(sys, 'frozen', False):
+                    print(f"[WARNING] 임시 디렉토리 삭제 실패: {e}")
                 
     except Exception as e:
-        print(f"[ERROR] 임시 파일 정리 실패: {e}")
+        # exe 파일이 아닌 경우에만 출력
+        if not getattr(sys, 'frozen', False):
+            print(f"[ERROR] 임시 파일 정리 실패: {e}")
 
 def format_duration(seconds):
     """초를 시:분:초 형식으로 변환합니다."""

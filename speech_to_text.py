@@ -109,7 +109,9 @@ class RecognitionThread(QThread):
                 if os.path.exists(temp_wav):
                     os.remove(temp_wav)
             except Exception as e:
-                print(f"[WARNING] 기존 임시 파일 삭제 실패: {e}")
+                # exe 파일이 아닌 경우에만 출력
+                if not getattr(sys, 'frozen', False):
+                    print(f"[WARNING] 기존 임시 파일 삭제 실패: {e}")
             
             # 새로운 파일 생성
             try:
@@ -611,7 +613,9 @@ class AudioTranscriber(QMainWindow):
             
         except Exception as e:
             error_detail = traceback.format_exc()
-            print(f"[ERROR] 텍스트 저장 실패:\n{error_detail}")
+            # exe 파일이 아닌 경우에만 출력
+            if not getattr(sys, 'frozen', False):
+                print(f"[ERROR] 텍스트 저장 실패:\n{error_detail}")
             if not auto_save:
                 QMessageBox.critical(self, "오류", f"파일 저장 중 오류 발생: {e}")
             return False
@@ -642,19 +646,36 @@ class AudioTranscriber(QMainWindow):
                 cleanup_temp_files(self.temp_dir)
                 
         except Exception as e:
-            print(f"[WARNING] 종료 시 정리 작업 실패: {e}")
+            # exe 파일이 아닌 경우에만 출력
+            if not getattr(sys, 'frozen', False):
+                print(f"[WARNING] 종료 시 정리 작업 실패: {e}")
         
         event.accept()
 
 def main():
     """메인 함수"""
+    # 콘솔 출력 리다이렉트 (exe 파일에서 콘솔 창 방지)
+    if getattr(sys, 'frozen', False):
+        # PyInstaller로 빌드된 exe 파일인 경우
+        import os
+        import sys
+        # 표준 출력과 에러를 null로 리다이렉트
+        sys.stdout = open(os.devnull, 'w')
+        sys.stderr = open(os.devnull, 'w')
+    
     app = QApplication(sys.argv)
     app.setApplicationName("음성 텍스트 변환기 (개선된 버전)")
     
-    # Windows에서 콘솔 창 숨기기
+    # Windows에서 콘솔 창 숨기기 (더 강력한 방법)
     if sys.platform == "win32":
-        import ctypes
-        ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
+        try:
+            import ctypes
+            # 콘솔 창 완전히 숨기기
+            ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
+            # 콘솔 창을 숨긴 상태로 유지
+            ctypes.windll.kernel32.FreeConsole()
+        except:
+            pass
     
     window = AudioTranscriber()
     window.show()
