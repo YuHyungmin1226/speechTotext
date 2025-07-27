@@ -12,6 +12,7 @@ import zipfile
 import shutil
 import platform
 import winreg
+import time
 from pathlib import Path
 
 def get_documents_dir():
@@ -116,16 +117,59 @@ def get_file_size_mb(filepath):
 def create_temp_directory():
     """임시 디렉토리를 생성합니다."""
     try:
-        return tempfile.mkdtemp(prefix="speech_to_text_")
+        # 사용자 홈 디렉토리에 임시 폴더 생성 (권한 문제 방지)
+        home_dir = os.path.expanduser("~")
+        temp_base = os.path.join(home_dir, "speech_to_text_temp")
+        
+        # 기존 임시 폴더가 있다면 정리
+        if os.path.exists(temp_base):
+            try:
+                shutil.rmtree(temp_base, ignore_errors=True)
+            except:
+                pass
+        
+        # 새로운 임시 폴더 생성
+        temp_dir = os.path.join(temp_base, f"session_{int(time.time())}")
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        print(f"[INFO] 임시 디렉토리 생성: {temp_dir}")
+        return temp_dir
     except Exception as e:
         print(f"[ERROR] 임시 디렉토리 생성 실패: {e}")
-        return None
+        # 대안: 시스템 임시 디렉토리 사용
+        try:
+            return tempfile.mkdtemp(prefix="speech_to_text_")
+        except Exception as e2:
+            print(f"[ERROR] 시스템 임시 디렉토리 생성도 실패: {e2}")
+            return None
 
 def cleanup_temp_files(temp_dir):
     """임시 파일들을 정리합니다."""
     try:
         if temp_dir and os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir, ignore_errors=True)
+            # 개별 파일 먼저 삭제
+            for root, dirs, files in os.walk(temp_dir, topdown=False):
+                for file in files:
+                    try:
+                        file_path = os.path.join(root, file)
+                        os.remove(file_path)
+                    except Exception as e:
+                        print(f"[WARNING] 파일 삭제 실패 {file}: {e}")
+                
+                for dir in dirs:
+                    try:
+                        dir_path = os.path.join(root, dir)
+                        os.rmdir(dir_path)
+                    except Exception as e:
+                        print(f"[WARNING] 디렉토리 삭제 실패 {dir}: {e}")
+            
+            # 최종적으로 디렉토리 삭제
+            try:
+                os.rmdir(temp_dir)
+                print(f"[INFO] 임시 디렉토리 정리 완료: {temp_dir}")
+            except Exception as e:
+                print(f"[WARNING] 임시 디렉토리 삭제 실패: {e}")
+                
     except Exception as e:
         print(f"[ERROR] 임시 파일 정리 실패: {e}")
 

@@ -103,7 +103,21 @@ class RecognitionThread(QThread):
             
             # WAV로 변환
             temp_wav = os.path.join(self.temp_dir, "temp_audio.wav")
-            audio_segment.export(temp_wav, format="wav")
+            
+            # 기존 파일이 있다면 삭제
+            try:
+                if os.path.exists(temp_wav):
+                    os.remove(temp_wav)
+            except Exception as e:
+                print(f"[WARNING] 기존 임시 파일 삭제 실패: {e}")
+            
+            # 새로운 파일 생성
+            try:
+                audio_segment.export(temp_wav, format="wav")
+            except Exception as e:
+                # 대안: 다른 파일명 사용
+                temp_wav = os.path.join(self.temp_dir, f"temp_audio_{int(time.time())}.wav")
+                audio_segment.export(temp_wav, format="wav")
             
             self.progress.emit(30)
             
@@ -122,7 +136,15 @@ class RecognitionThread(QThread):
                 self.progress.emit(int(progress))
                 self.status.emit(f"인식 중... 청크 {i+1}/{len(chunks)}")
                 
-                chunk_file = os.path.join(self.temp_dir, f"chunk_{i}.wav")
+                chunk_file = os.path.join(self.temp_dir, f"chunk_{i}_{int(time.time())}.wav")
+                
+                # 기존 청크 파일이 있다면 삭제
+                try:
+                    if os.path.exists(chunk_file):
+                        os.remove(chunk_file)
+                except:
+                    pass
+                
                 chunk.export(chunk_file, format="wav")
                 
                 with sr.AudioFile(chunk_file) as source:
@@ -607,10 +629,21 @@ class AudioTranscriber(QMainWindow):
     def closeEvent(self, event):
         """애플리케이션 종료 시 호출됩니다."""
         try:
+            # 음성 인식 스레드 중지
+            if self.recognition_thread and self.recognition_thread.isRunning():
+                self.recognition_thread.stop()
+                self.recognition_thread.wait(3000)  # 3초 대기
+            
+            # 오디오 재생 중지
             pygame.mixer.music.stop()
-            cleanup_temp_files(self.temp_dir)
-        except:
-            pass
+            
+            # 임시 파일 정리
+            if hasattr(self, 'temp_dir') and self.temp_dir:
+                cleanup_temp_files(self.temp_dir)
+                
+        except Exception as e:
+            print(f"[WARNING] 종료 시 정리 작업 실패: {e}")
+        
         event.accept()
 
 def main():
