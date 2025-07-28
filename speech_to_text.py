@@ -11,6 +11,7 @@ import pygame
 import time
 import subprocess
 from pathlib import Path
+from typing import Optional, Tuple, List
 
 # PyQt5 imports
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
@@ -62,20 +63,70 @@ if not check_and_install_ffmpeg():
 import speech_recognition as sr
 from pydub import AudioSegment
 
+class AudioProcessor:
+    """오디오 처리 클래스 - 중복 로직 통합"""
+    
+    @staticmethod
+    def load_audio_file(filepath: str, file_ext: str) -> AudioSegment:
+        """오디오 파일을 로드합니다."""
+        try:
+            if file_ext == ".mp3":
+                return AudioSegment.from_mp3(filepath)
+            elif file_ext == ".wav":
+                return AudioSegment.from_wav(filepath)
+            elif file_ext in [".m4a", ".aac"]:
+                return AudioSegment.from_file(filepath, format="m4a")
+            elif file_ext == ".flac":
+                return AudioSegment.from_file(filepath, format="flac")
+            elif file_ext == ".ogg":
+                return AudioSegment.from_file(filepath, format="ogg")
+            else:
+                return AudioSegment.from_file(filepath)
+        except Exception as e:
+            raise Exception(f"오디오 파일 로드 실패: {e}")
+    
+    @staticmethod
+    def split_audio_to_chunks(audio_segment: AudioSegment, chunk_length_ms: int) -> List[AudioSegment]:
+        """오디오를 청크로 분할합니다."""
+        chunks = []
+        total_length = len(audio_segment)
+        
+        for i in range(0, total_length, chunk_length_ms):
+            chunk = audio_segment[i:i + chunk_length_ms]
+            chunks.append(chunk)
+        
+        return chunks
+    
+    @staticmethod
+    def export_chunk_to_wav(chunk: AudioSegment, temp_dir: str, chunk_index: int) -> str:
+        """청크를 WAV 파일로 내보냅니다."""
+        chunk_file = os.path.join(temp_dir, f"chunk_{chunk_index}_{int(time.time())}.wav")
+        
+        # 기존 파일이 있다면 삭제
+        try:
+            if os.path.exists(chunk_file):
+                os.remove(chunk_file)
+        except:
+            pass
+        
+        chunk.export(chunk_file, format="wav")
+        return chunk_file
+
 class RecognitionThread(QThread):
-    """음성 인식 스레드"""
+    """음성 인식 스레드 - 최적화된 버전"""
     finished = pyqtSignal(str)
     progress = pyqtSignal(int)
     status = pyqtSignal(str)
     error = pyqtSignal(str)
     
-    def __init__(self, audio_file, language, temp_dir, chunk_length_ms=60000):
+    def __init__(self, audio_file: str, language: str, temp_dir: str, chunk_length_ms: int = 60000):
         super().__init__()
         self.audio_file = audio_file
         self.language = language
         self.temp_dir = temp_dir
         self.chunk_length_ms = chunk_length_ms
         self.is_running = True
+        self.audio_processor = AudioProcessor()
     
     def run(self):
         try:
@@ -98,7 +149,7 @@ class RecognitionThread(QThread):
             
             # 오디오 로드
             file_ext = os.path.splitext(self.audio_file)[1].lower()
-            audio_segment = self._load_audio_file(file_ext)
+            audio_segment = self.audio_processor.load_audio_file(self.audio_file, file_ext)
             
             self.progress.emit(20)
             
@@ -110,7 +161,6 @@ class RecognitionThread(QThread):
                 if os.path.exists(temp_wav):
                     os.remove(temp_wav)
             except Exception as e:
-                # exe 파일이 아닌 경우에만 출력
                 if not getattr(sys, 'frozen', False):
                     print(f"[WARNING] 기존 임시 파일 삭제 실패: {e}")
             
@@ -126,8 +176,7 @@ class RecognitionThread(QThread):
             
             # 음성 인식
             lang_code = LANGUAGES.get(self.language)
-            
-            chunks = self.split_audio_to_chunks(audio_segment, self.chunk_length_ms)
+            chunks = self.audio_processor.split_audio_to_chunks(audio_segment, self.chunk_length_ms)
             recognizer = sr.Recognizer()
             
             full_text = ""
@@ -139,16 +188,7 @@ class RecognitionThread(QThread):
                 self.progress.emit(int(progress))
                 self.status.emit(f"인식 중... 청크 {i+1}/{len(chunks)}")
                 
-                chunk_file = os.path.join(self.temp_dir, f"chunk_{i}_{int(time.time())}.wav")
-                
-                # 기존 청크 파일이 있다면 삭제
-                try:
-                    if os.path.exists(chunk_file):
-                        os.remove(chunk_file)
-                except:
-                    pass
-                
-                chunk.export(chunk_file, format="wav")
+                chunk_file = self.audio_processor.export_chunk_to_wav(chunk, self.temp_dir, i)
                 
                 with sr.AudioFile(chunk_file) as source:
                     audio_data = recognizer.record(source)
@@ -173,46 +213,21 @@ class RecognitionThread(QThread):
         except Exception as e:
             self.error.emit(f"음성 인식 중 오류 발생: {e}")
     
-    def _load_audio_file(self, file_ext):
-        """오디오 파일을 로드합니다."""
-        if file_ext == ".mp3":
-            return AudioSegment.from_mp3(self.audio_file)
-        elif file_ext == ".wav":
-            return AudioSegment.from_wav(self.audio_file)
-        elif file_ext in [".m4a", ".aac"]:
-            return AudioSegment.from_file(self.audio_file, format="m4a")
-        elif file_ext == ".flac":
-            return AudioSegment.from_file(self.audio_file, format="flac")
-        elif file_ext == ".ogg":
-            return AudioSegment.from_file(self.audio_file, format="ogg")
-        else:
-            return AudioSegment.from_file(self.audio_file)
-    
-    def split_audio_to_chunks(self, audio_segment, chunk_length_ms):
-        """오디오를 청크로 분할합니다."""
-        chunks = []
-        total_length = len(audio_segment)
-        
-        for i in range(0, total_length, chunk_length_ms):
-            chunk = audio_segment[i:i + chunk_length_ms]
-            chunks.append(chunk)
-        
-        return chunks
-    
     def stop(self):
         """스레드를 중지합니다."""
         self.is_running = False
 
 class AudioTranscriber(QMainWindow):
-    """음성 텍스트 변환기 메인 윈도우"""
+    """음성 텍스트 변환기 메인 윈도우 - 최적화된 버전"""
     
     def __init__(self):
         super().__init__()
-        self.audio_file = None
-        self.audio_segment = None
-        self.is_playing = False
-        self.playing_thread = None
-        self.recognition_thread = None
+        self.audio_file: Optional[str] = None
+        self.audio_segment: Optional[AudioSegment] = None
+        self.is_playing: bool = False
+        self.playing_thread: Optional[threading.Thread] = None
+        self.recognition_thread: Optional[RecognitionThread] = None
+        self.audio_processor = AudioProcessor()
         
         # 임시 디렉토리 생성
         self.temp_dir = create_temp_directory()
@@ -233,7 +248,7 @@ class AudioTranscriber(QMainWindow):
     
     def init_ui(self):
         """UI를 초기화합니다."""
-        self.setWindowTitle("음성 텍스트 변환기 (개선된 버전)")
+        self.setWindowTitle("음성 텍스트 변환기 (최적화된 버전)")
         self.setGeometry(100, 100, *UI_CONFIG["window_size"])
         
         # 중앙 위젯
@@ -370,7 +385,7 @@ class AudioTranscriber(QMainWindow):
             
             self.status_bar.showMessage(f"파일 로드됨: {filename}")
     
-    def extract_audio_from_video(self, video_path):
+    def extract_audio_from_video(self, video_path: str):
         """비디오 파일에서 오디오를 추출합니다."""
         try:
             self.status_bar.showMessage("비디오에서 오디오 추출 중...")
@@ -450,7 +465,7 @@ class AudioTranscriber(QMainWindow):
                 os.environ['FFPROBE_BINARY'] = ffprobe_path
             
             # 오디오 로드
-            self.audio_segment = self._load_audio_segment(file_ext)
+            self.audio_segment = self.audio_processor.load_audio_file(self.audio_file, file_ext)
             
             try:
                 # 임시 파일이 이미 존재하면 삭제
@@ -474,21 +489,6 @@ class AudioTranscriber(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "오류", f"오디오 파일 로드 실패: {e}")
             self.status_bar.showMessage("오류: 오디오 파일을 로드할 수 없습니다.")
-    
-    def _load_audio_segment(self, file_ext):
-        """오디오 세그먼트를 로드합니다."""
-        if file_ext == ".mp3":
-            return AudioSegment.from_mp3(self.audio_file)
-        elif file_ext == ".wav":
-            return AudioSegment.from_wav(self.audio_file)
-        elif file_ext in [".m4a", ".aac"]:
-            return AudioSegment.from_file(self.audio_file, format="m4a")
-        elif file_ext == ".flac":
-            return AudioSegment.from_file(self.audio_file, format="flac")
-        elif file_ext == ".ogg":
-            return AudioSegment.from_file(self.audio_file, format="ogg")
-        else:
-            return AudioSegment.from_file(self.audio_file)
     
     def toggle_play(self):
         """오디오 재생을 토글합니다."""
@@ -541,7 +541,7 @@ class AudioTranscriber(QMainWindow):
         self.progress_bar.setValue(0)
         self.status_bar.showMessage("음성 인식 진행 중...")
     
-    def on_recognition_finished(self, text):
+    def on_recognition_finished(self, text: str):
         """음성 인식이 완료되었을 때 호출됩니다."""
         self.recognize_button.setEnabled(True)
         self.progress_bar.setVisible(False)
@@ -562,7 +562,7 @@ class AudioTranscriber(QMainWindow):
             self.text_result.setPlainText("인식된 텍스트가 없습니다.")
             QMessageBox.warning(self, "알림", "음성 인식 결과가 없습니다.")
     
-    def on_recognition_error(self, error_msg):
+    def on_recognition_error(self, error_msg: str):
         """음성 인식 중 오류가 발생했을 때 호출됩니다."""
         self.recognize_button.setEnabled(True)
         self.progress_bar.setVisible(False)
@@ -570,7 +570,7 @@ class AudioTranscriber(QMainWindow):
         QMessageBox.critical(self, "오류", error_msg)
         self.text_result.setPlainText(f"오류 발생: {error_msg}")
     
-    def save_text_to_file(self, text, filepath=None, auto_save=False):
+    def save_text_to_file(self, text: str, filepath: Optional[str] = None, auto_save: bool = False) -> bool:
         """텍스트를 파일로 저장합니다."""
         if not text:
             if not auto_save:
@@ -614,7 +614,6 @@ class AudioTranscriber(QMainWindow):
             
         except Exception as e:
             error_detail = traceback.format_exc()
-            # exe 파일이 아닌 경우에만 출력
             if not getattr(sys, 'frozen', False):
                 print(f"[ERROR] 텍스트 저장 실패:\n{error_detail}")
             if not auto_save:
@@ -647,7 +646,6 @@ class AudioTranscriber(QMainWindow):
                 cleanup_temp_files(self.temp_dir)
                 
         except Exception as e:
-            # exe 파일이 아닌 경우에만 출력
             if not getattr(sys, 'frozen', False):
                 print(f"[WARNING] 종료 시 정리 작업 실패: {e}")
         
@@ -665,7 +663,7 @@ def main():
         sys.stderr = open(os.devnull, 'w')
     
     app = QApplication(sys.argv)
-    app.setApplicationName("음성 텍스트 변환기 (개선된 버전)")
+    app.setApplicationName("음성 텍스트 변환기 (최적화된 버전)")
     
     # Windows에서 콘솔 창 숨기기 (더 강력한 방법)
     if sys.platform == "win32":
