@@ -13,6 +13,7 @@ PyQt5 기반의 음성 텍스트 변환 애플리케이션입니다. 오디오 �
 - **진행률 표시**: 실시간 변환 진행 상황 확인
 - **파일 크기 제한**: 500MB까지 지원
 - **개선된 오류 처리**: 더 나은 사용자 경험
+- **코드 최적화**: 성능 향상 및 메모리 사용량 최적화
 
 ## 📋 시스템 요구사항
 
@@ -38,7 +39,7 @@ pip install -r requirements.txt
 python speech_to_text.py
 ```
 
-**참고**: 이제 `speech_to_text.py`는 개선된 버전입니다. 더 나은 사용자 경험과 안정성을 제공합니다.
+**참고**: 이제 `speech_to_text.py`는 최적화된 버전입니다. 더 나은 성능과 안정성을 제공합니다.
 
 ## 📖 사용 방법
 
@@ -56,12 +57,13 @@ python speech_to_text.py
 - **오디오 처리**: pydub, pygame
 - **미디어 처리**: FFmpeg (자동 설치)
 - **스레드 처리**: QThread (UI 블로킹 방지)
+- **타입 힌트**: Python typing 모듈
 
 ## 📁 파일 구조
 
 ```
 speechTotext/
-├── speech_to_text.py    # 메인 애플리케이션 (개선된 버전)
+├── speech_to_text.py    # 메인 애플리케이션 (최적화된 버전)
 ├── config.py            # 설정 파일
 ├── utils.py             # 유틸리티 함수들
 ├── ffmpeg_installer.py  # FFmpeg 설치 관리자
@@ -76,12 +78,15 @@ speechTotext/
 - **설정 분리**: 하드코딩된 값들을 config.py로 분리
 - **유틸리티 함수**: 공통 기능을 utils.py로 분리
 - **FFmpeg 관리**: 설치 관련 기능을 별도 모듈로 분리
+- **AudioProcessor 클래스**: 오디오 처리 로직 통합 및 중복 제거
 
 ### 성능 및 안정성 개선
 - **파일 크기 제한**: 500MB 제한으로 메모리 사용량 제어
 - **파일 유효성 검사**: 업로드 전 파일 검증
 - **인터넷 연결 확인**: API 사용 전 연결 상태 확인
 - **임시 파일 관리**: 자동 정리 및 오류 처리 개선
+- **타입 힌트**: 코드 가독성 및 IDE 지원 향상
+- **메모리 최적화**: 불필요한 객체 생성 최소화
 
 ### 사용자 경험 개선
 - **더 나은 오류 메시지**: 구체적이고 도움이 되는 오류 메시지
@@ -138,12 +143,36 @@ speechTotext/
 - [ ] 자막 파일 생성 (SRT, VTT 형식)
 - [ ] 음성 품질 개선 기능
 - [ ] 설정 저장 및 불러오기
+- [ ] 다크 모드 지원
 
 ### 장기 개선사항
 - [ ] 웹 버전 개발
 - [ ] 클라우드 동기화
 - [ ] AI 기반 음성 품질 분석
 - [ ] 다국어 동시 인식
+- [ ] 실시간 협업 기능
+
+## 🛠️ 개발 환경 설정
+
+### 개발 도구 설치 (선택사항)
+```bash
+pip install pytest black flake8 mypy
+```
+
+### 코드 포맷팅
+```bash
+black speech_to_text.py utils.py config.py ffmpeg_installer.py
+```
+
+### 코드 린팅
+```bash
+flake8 speech_to_text.py utils.py config.py ffmpeg_installer.py
+```
+
+### 타입 체킹
+```bash
+mypy speech_to_text.py utils.py config.py ffmpeg_installer.py
+```
 
 ## 🤝 기여하기
 
@@ -165,4 +194,4 @@ speechTotext/
 
 **개발자**: YuHyungmin1226  
 **최종 업데이트**: 2025년 1월  
-**버전**: 2.0 (개선된 버전) 
+**버전**: 3.0 (최적화된 버전) 

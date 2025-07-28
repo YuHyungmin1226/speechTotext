@@ -1,3 +1,4 @@
+# 음성 텍스트 변환기 - 필수 패키지
 PyQt5>=5.15.0
 SpeechRecognition>=3.14.0
 pydub>=0.25.1
@@ -9,6 +10,12 @@ PyAudio>=0.2.11  # 실시간 음성 인식을 위한 패키지
 numpy>=1.21.0    # 오디오 처리 개선을 위한 패키지
 scipy>=1.7.0     # 과학 계산 및 신호 처리
 matplotlib>=3.5.0  # 오디오 시각화 및 분석
+
+# 개발 도구 (선택사항)
+pytest>=7.0.0    # 단위 테스트
+black>=22.0.0    # 코드 포맷팅
+flake8>=5.0.0    # 코드 린팅
+mypy>=1.0.0      # 타입 체킹
 
 # FFmpeg는 자동으로 설치됩니다 (speech_to_text.py 내장 기능)
 # Google Speech Recognition API를 사용하려면 인터넷 연결이 필요합니다. 

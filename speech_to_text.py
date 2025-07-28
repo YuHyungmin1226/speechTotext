@@ -417,23 +417,14 @@ class AudioTranscriber(QMainWindow):
                 stderr=subprocess.PIPE
             )
             
-            # 진행 상태 표시
-            progress_dialog = QMessageBox()
-            progress_dialog.setWindowTitle("오디오 추출")
-            progress_dialog.setText("오디오 추출 중...")
-            progress_dialog.setStandardButtons(QMessageBox.NoButton)
-            progress_dialog.show()
-            
             # 프로세스 완료 대기
             stdout, stderr = process.communicate()
             
             if process.returncode == 0:
                 self.audio_file = temp_audio
                 self.load_audio()
-                progress_dialog.close()
-                QMessageBox.information(self, "추출 완료", "비디오에서 오디오가 성공적으로 추출되었습니다.")
+                self.status_bar.showMessage("오디오 추출 완료")
             else:
-                progress_dialog.close()
                 QMessageBox.critical(self, "추출 실패", f"오디오 추출 중 오류가 발생했습니다:\n{stderr.decode()}")
                 
         except Exception as e:
@@ -545,22 +536,20 @@ class AudioTranscriber(QMainWindow):
         """음성 인식이 완료되었을 때 호출됩니다."""
         self.recognize_button.setEnabled(True)
         self.progress_bar.setVisible(False)
-        self.status_bar.showMessage("음성 인식 완료")
         
         if text.strip():
             self.text_result.setPlainText(text)
             
-            # 완료 메시지 표시
+            # 완료 메시지를 상태바에 표시
             text_length = len(text.strip())
-            QMessageBox.information(self, "변환 완료", 
-                                  f"음성 인식이 완료되었습니다!\n\n인식된 텍스트 길이: {text_length}자")
+            self.status_bar.showMessage(f"음성 인식 완료 - 인식된 텍스트: {text_length}자")
             
             # 자동 저장
             if self.auto_save_checkbox.isChecked():
                 self.save_text_to_file(text, auto_save=True)
         else:
             self.text_result.setPlainText("인식된 텍스트가 없습니다.")
-            QMessageBox.warning(self, "알림", "음성 인식 결과가 없습니다.")
+            self.status_bar.showMessage("음성 인식 완료 - 인식된 텍스트가 없습니다")
     
     def on_recognition_error(self, error_msg: str):
         """음성 인식 중 오류가 발생했을 때 호출됩니다."""
@@ -574,7 +563,7 @@ class AudioTranscriber(QMainWindow):
         """텍스트를 파일로 저장합니다."""
         if not text:
             if not auto_save:
-                QMessageBox.information(self, "알림", "저장할 텍스트가 없습니다.")
+                self.status_bar.showMessage("저장할 텍스트가 없습니다.")
             return False
         
         if filepath is None:
@@ -608,8 +597,6 @@ class AudioTranscriber(QMainWindow):
                     file.write(text)
             
             self.status_bar.showMessage(f"텍스트가 저장되었습니다: {os.path.basename(filepath)}")
-            if not auto_save:
-                QMessageBox.information(self, "저장 성공", f"텍스트가 성공적으로 저장되었습니다:\n{filepath}")
             return True
             
         except Exception as e:
@@ -657,29 +644,34 @@ def main():
     if getattr(sys, 'frozen', False):
         # PyInstaller로 빌드된 exe 파일인 경우
         import os
-        import sys
         # 표준 출력과 에러를 null로 리다이렉트
         sys.stdout = open(os.devnull, 'w')
         sys.stderr = open(os.devnull, 'w')
     
-    app = QApplication(sys.argv)
-    app.setApplicationName("음성 텍스트 변환기 (최적화된 버전)")
-    
-    # Windows에서 콘솔 창 숨기기 (더 강력한 방법)
-    if sys.platform == "win32":
-        try:
-            import ctypes
-            # 콘솔 창 완전히 숨기기
-            ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
-            # 콘솔 창을 숨긴 상태로 유지
-            ctypes.windll.kernel32.FreeConsole()
-        except:
-            pass
-    
-    window = AudioTranscriber()
-    window.show()
-    
-    sys.exit(app.exec_())
+    try:
+        app = QApplication(sys.argv)
+        app.setApplicationName("음성 텍스트 변환기 (최적화된 버전)")
+        
+        # Windows에서 콘솔 창 숨기기 (exe 파일에서만)
+        if sys.platform == "win32" and getattr(sys, 'frozen', False):
+            try:
+                import ctypes
+                # 콘솔 창 완전히 숨기기
+                ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
+                # 콘솔 창을 숨긴 상태로 유지
+                ctypes.windll.kernel32.FreeConsole()
+            except:
+                pass
+        
+        window = AudioTranscriber()
+        window.show()
+        
+        result = app.exec_()
+        sys.exit(result)
+    except Exception as e:
+        print(f"[ERROR] 메인 함수에서 오류 발생: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     main() 
