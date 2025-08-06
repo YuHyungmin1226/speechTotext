@@ -48,6 +48,7 @@ try:
     from utils import (get_documents_dir, find_ffmpeg_path, find_ffprobe_path, 
                       check_internet_connection, get_file_size_mb, create_temp_directory, 
                       cleanup_temp_files, format_duration, validate_audio_file)
+    from youtube_utils import YouTubeDownloadThread, check_yt_dlp_installed
     from ffmpeg_installer import check_and_install_ffmpeg
 except ImportError as e:
     QMessageBox.critical(None, "모듈 임포트 오류", 
@@ -227,6 +228,7 @@ class AudioTranscriber(QMainWindow):
         self.is_playing: bool = False
         self.playing_thread: Optional[threading.Thread] = None
         self.recognition_thread: Optional[RecognitionThread] = None
+        self.youtube_download_thread: Optional[YouTubeDownloadThread] = None
         self.audio_processor = AudioProcessor()
         
         # 임시 디렉토리 생성
@@ -277,6 +279,31 @@ class AudioTranscriber(QMainWindow):
         self.file_info_label = QLabel("파일 정보: 선택된 파일이 없습니다")
         self.file_info_label.setStyleSheet("color: gray; font-size: 10px;")
         control_layout.addWidget(self.file_info_label)
+        
+        # 구분선 추가
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setFrameShadow(QFrame.Sunken)
+        control_layout.addWidget(separator)
+        
+        # YouTube URL 입력
+        youtube_layout = QHBoxLayout()
+        youtube_layout.addWidget(QLabel("YouTube URL:"))
+        
+        self.youtube_edit = QLineEdit()
+        self.youtube_edit.setPlaceholderText("YouTube 링크를 입력하세요 (예: https://www.youtube.com/watch?v=...)")
+        
+        self.youtube_button = QPushButton("YouTube에서 다운로드")
+        self.youtube_button.clicked.connect(self.download_from_youtube)
+        
+        youtube_layout.addWidget(self.youtube_edit)
+        youtube_layout.addWidget(self.youtube_button)
+        control_layout.addLayout(youtube_layout)
+        
+        # YouTube 상태 표시
+        self.youtube_status_label = QLabel("")
+        self.youtube_status_label.setStyleSheet("color: blue; font-size: 10px;")
+        control_layout.addWidget(self.youtube_status_label)
         
         # 오디오 제어
         audio_layout = QHBoxLayout()
@@ -617,9 +644,92 @@ class AudioTranscriber(QMainWindow):
         self.text_result.clear()
         self.status_bar.showMessage("결과가 지워졌습니다.")
     
+    def download_from_youtube(self):
+        """YouTube에서 오디오를 다운로드합니다."""
+        url = self.youtube_edit.text().strip()
+        if not url:
+            QMessageBox.warning(self, "입력 오류", "YouTube URL을 입력하세요.")
+            return
+        
+        # yt-dlp 설치 확인
+        if not check_yt_dlp_installed():
+            reply = QMessageBox.question(
+                self, "패키지 설치 필요",
+                "YouTube 다운로드를 위해 yt-dlp 패키지가 필요합니다.\n"
+                "다음 명령어로 설치해주세요: pip install yt-dlp\n\n"
+                "설치 후 다시 시도하시겠습니까?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if reply == QMessageBox.Yes:
+                # 설치 안내 메시지 표시
+                self.youtube_status_label.setText("yt-dlp 패키지를 설치한 후 다시 시도해주세요.")
+            return
+        
+        # 이미 다운로드 중인 경우
+        if self.youtube_download_thread and self.youtube_download_thread.isRunning():
+            QMessageBox.information(self, "알림", "이미 YouTube 다운로드가 진행 중입니다.")
+            return
+        
+        # 다운로드 시작
+        self.youtube_button.setEnabled(False)
+        self.youtube_status_label.setText("YouTube 다운로드 준비 중...")
+        
+        # 다운로드 스레드 생성
+        self.youtube_download_thread = YouTubeDownloadThread(url, self.temp_dir)
+        self.youtube_download_thread.progress.connect(self.progress_bar.setValue)
+        self.youtube_download_thread.status.connect(self.youtube_status_label.setText)
+        self.youtube_download_thread.finished.connect(self.on_youtube_download_finished)
+        self.youtube_download_thread.error.connect(self.on_youtube_download_error)
+        
+        # 프로그레스바 표시
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setValue(0)
+        
+        # 다운로드 시작
+        self.youtube_download_thread.start()
+    
+    def on_youtube_download_finished(self, file_path: str):
+        """YouTube 다운로드 완료 시 호출됩니다."""
+        self.youtube_button.setEnabled(True)
+        self.progress_bar.setVisible(False)
+        
+        if os.path.exists(file_path):
+            # 다운로드된 파일을 현재 오디오 파일로 설정
+            self.audio_file = file_path
+            self.file_edit.setText(file_path)
+            
+            # 파일 정보 표시
+            file_size_mb = get_file_size_mb(file_path)
+            filename = os.path.basename(file_path)
+            self.file_info_label.setText(f"파일: {filename} | 크기: {file_size_mb:.1f}MB")
+            
+            # 오디오 로드
+            self.load_audio()
+            
+            self.youtube_status_label.setText("YouTube 다운로드 완료! 음성 인식을 시작할 수 있습니다.")
+            self.status_bar.showMessage(f"YouTube 파일 로드됨: {filename}")
+            
+            # YouTube URL 입력창 비우기
+            self.youtube_edit.clear()
+        else:
+            self.youtube_status_label.setText("다운로드된 파일을 찾을 수 없습니다.")
+            QMessageBox.critical(self, "오류", "다운로드된 파일을 찾을 수 없습니다.")
+    
+    def on_youtube_download_error(self, error_msg: str):
+        """YouTube 다운로드 오류 시 호출됩니다."""
+        self.youtube_button.setEnabled(True)
+        self.progress_bar.setVisible(False)
+        self.youtube_status_label.setText(f"다운로드 오류: {error_msg}")
+        QMessageBox.critical(self, "YouTube 다운로드 오류", error_msg)
+    
     def closeEvent(self, event):
         """애플리케이션 종료 시 호출됩니다."""
         try:
+            # YouTube 다운로드 스레드 중지
+            if self.youtube_download_thread and self.youtube_download_thread.isRunning():
+                self.youtube_download_thread.quit()
+                self.youtube_download_thread.wait(3000)  # 3초 대기
+            
             # 음성 인식 스레드 중지
             if self.recognition_thread and self.recognition_thread.isRunning():
                 self.recognition_thread.stop()
