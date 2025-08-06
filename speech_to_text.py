@@ -13,14 +13,14 @@ import subprocess
 from pathlib import Path
 from typing import Optional, Tuple, List
 
-# PyQt5 imports
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
+# PySide6 imports
+from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                             QHBoxLayout, QLabel, QLineEdit, QPushButton, 
                             QComboBox, QProgressBar, QTextEdit, QFileDialog,
                             QMessageBox, QGroupBox, QFrame, QStatusBar,
                             QGridLayout, QSplitter, QCheckBox)
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QObject, QTimer
-from PyQt5.QtGui import QFont, QIcon
+from PySide6.QtCore import Qt, QThread, Signal, QObject, QTimer
+from PySide6.QtGui import QFont, QIcon
 
 # 필요한 패키지 확인
 required_packages = {
@@ -114,10 +114,10 @@ class AudioProcessor:
 
 class RecognitionThread(QThread):
     """음성 인식 스레드 - 최적화된 버전"""
-    finished = pyqtSignal(str)
-    progress = pyqtSignal(int)
-    status = pyqtSignal(str)
-    error = pyqtSignal(str)
+    finished = Signal(str)
+    progress = Signal(int)
+    status = Signal(str)
+    error = Signal(str)
     
     def __init__(self, audio_file: str, language: str, temp_dir: str, chunk_length_ms: int = 60000):
         super().__init__()
@@ -666,7 +666,7 @@ def main():
         window = AudioTranscriber()
         window.show()
         
-        result = app.exec_()
+        result = app.exec()
         sys.exit(result)
     except Exception as e:
         print(f"[ERROR] 메인 함수에서 오류 발생: {e}")
